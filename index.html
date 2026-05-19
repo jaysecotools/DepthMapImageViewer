@@ -1,77 +1,83 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Depth Parallax Viewer</title>
-
+  <title>Spatial Depth Viewer v3</title>
   <style>
-    body {
-      margin: 0;
-      height: 100vh;
-      background: #111;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      overflow: hidden;
-    }
-
-    .frame {
-      width: 650px;
-      height: 420px;
-      position: relative;
-      overflow: hidden;
-      border-radius: 16px;
-      box-shadow: 0 30px 80px rgba(0,0,0,0.6);
-    }
-
-    canvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
+    body { margin: 0; overflow: hidden; background: #111; }
+    canvas { display: block; }
   </style>
 </head>
 
 <body>
 
-<canvas id="c"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
 <script>
-const canvas = document.getElementById("c");
-const ctx = canvas.getContext("2d");
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
 
-canvas.width = 650;
-canvas.height = 420;
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
 
-const image = new Image();
-const depth = new Image();
+const loader = new THREE.TextureLoader();
 
-image.src = "image.jpg";
-depth.src = "depth.png";
+const colorTex = loader.load("image.jpg");
+const depthTex = loader.load("depth.png");
 
-let mouseX = 0;
-let mouseY = 0;
+const material = new THREE.ShaderMaterial({
+  uniforms: {
+    colorTex: { value: colorTex },
+    depthTex: { value: depthTex },
+    mouse: { value: new THREE.Vector2(0,0) }
+  },
 
-document.addEventListener("mousemove", (e) => {
-  mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
-  mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = vec4(position, 1.0);
+    }
+  `,
+
+  fragmentShader: `
+    uniform sampler2D colorTex;
+    uniform sampler2D depthTex;
+    uniform vec2 mouse;
+
+    varying vec2 vUv;
+
+    void main() {
+
+      float depth = texture2D(depthTex, vUv).r;
+
+      // stronger depth = more movement
+      vec2 offset = mouse * (depth * 0.25);
+
+      vec2 uv = vUv + offset;
+
+      gl_FragColor = texture2D(colorTex, uv);
+    }
+  `
 });
 
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+const geometry = new THREE.PlaneGeometry(2, 2);
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
 
-  if (image.complete && depth.complete) {
+window.addEventListener("mousemove", (e) => {
+  const x = (e.clientX / window.innerWidth - 0.5) * 2;
+  const y = (e.clientY / window.innerHeight - 0.5) * -2;
 
-    // fake depth offset (simple but effective first version)
-    const offsetX = mouseX * 20;
-    const offsetY = mouseY * 20;
+  material.uniforms.mouse.value.set(x, y);
+});
 
-    ctx.drawImage(image, offsetX, offsetY, canvas.width, canvas.height);
-  }
-
-  requestAnimationFrame(draw);
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
 }
 
-draw();
+animate();
 </script>
 
 </body>
